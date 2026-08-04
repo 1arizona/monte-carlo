@@ -1,15 +1,25 @@
 import numpy as np
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List
 
 
-class SingleAssetRequest(BaseModel):
-    initial_capital: float = 20000.0
-    annual_return: float = 0.08
-    annual_volatility: float = 0.15
-    years: int = 15
+class AssetConfig(BaseModel):
+    name: str = Field(..., description="Name of the asset, e.g., ETF S&P 500")
+    weight: float = Field(...,
+                          description="Weight of the asset in the portfolio (0.0 to 1.0)")
+    annual_return: float = Field(...,
+                                 description="Expected annual rate of return")
+    annual_volatility: float = Field(...,
+                                     description="Annual volatility (standard deviation)")
+
+
+class MultiAssetRequest(BaseModel):
+    initial_capital: float = 100000.0
+    years: int = 10
     simulations_count: int = 10000
-    monthly_contribution: float = 500.0
+    monthly_contribution: float = 1000.0
+    assets: List[AssetConfig]
+    correlation_matrix: List[List[float]]
 
 
 class YearResult(BaseModel):
@@ -19,34 +29,77 @@ class YearResult(BaseModel):
     p90: float
 
 
-def run_single_asset_simulation(params: SingleAssetRequest) -> List[YearResult]:
+class MultiAssetResponse(BaseModel):
+    results: List[YearResult]
+    expected_portfolio_return: float
+    expected_portfolio_volatility: float
+
+
+def run_multi_asset_monte_carlo(req: MultiAssetRequest) -> MultiAssetResponse:
+    num_assets = len(req.assets)
     steps_per_year = 12
-    total_steps = params.years * steps_per_year
+    total_steps = req.years * steps_per_year
     dt = 1.0 / steps_per_year
 
-    drift = (params.annual_return - 0.5 * (params.annual_volatility ** 2)) * dt
-    vol = params.annual_volatility * np.sqrt(dt)
+    # Weights normalization
+    weights = np.array([a.weight for a in req.assets], dtype=np.float64
+                       )
+    weights /= np.sum(weights)
 
-    random_shocks = np.random.normal(
-        0, 1, size=(total_steps, params.simulations_count))
-    portfolio_paths = np.zeros((total_steps + 1, params.simulations_count))
-    portfolio_paths[0] = params.initial_capital
+    returns = np.array([a.annual_return for a in req.assets], dtype=np.float64)
+    vols = np.array([a.annual_volatility for a in req.assets],
+                    dtype=np.float64)
+    corr_matrix = np.array(req.correlation_matrix, dtype=np.float64)
+
+    # Cholesky decomposition for correlated random variables
+    L = np.linalg.cholesky(corr_matrix)
+
+    drifts = (returns - 0.5 * (vols ** 2)) * dt
+    vols_dt = vols * np.sqrt(dt)
+
+    # Nonlinear generation of correlated random shocks [steps, assets, simulations]
+    Z = np.random.normal(0, 1, size=(
+        total_steps, num_assets, req.simulations_count))
+    correlated_shocks = np.einsum('ij, jkl -> ikl', L, Z)
+
+    asset_paths = np.zeros(
+        (total_steps + 1, num_assets, req.simulations_count), dtype=np.float64)
+    asset_paths[0] = (req.initial_capital * weights[:, np.newaxis])
 
     for t in range(1, total_steps + 1):
-        prev_val = portfolio_paths[t - 1]
-        z = random_shocks[t - 1]
-        portfolio_paths[t] = prev_val * \
-            np.exp(drift + vol * z) + params.monthly_contribution
+        prev_prices = asset_paths[t - 1]
+        shocks = correlated_shocks[t - 1]
+        growth = np.exp(drifts[:, np.newaxis] +
+                        vols_dt[:, np.newaxis] * shocks)
+        next_prices = prev_prices * growth
 
-    results = []
-    for year in range(params.years + 1):
+        if req.monthly_contribution > 0:
+            next_prices += (req.monthly_contribution * weights[:, np.newaxis])
+
+        asset_paths[t] = next_prices
+
+    # Aggregate portfolio value across assets
+    portfolio_paths = np.sum(asset_paths, axis=1)
+
+    yearly_results = List[YearResult] = []
+    for year in range(req.years + 1):
         step_idx = year * steps_per_year
         vals = portfolio_paths[step_idx]
-        results.append(YearResult(
+        yearly_results.append(YearResult(
             year=year,
             p10=round(float(np.percentile(vals, 10)), 2),
             p50=round(float(np.percentile(vals, 50)), 2),
             p90=round(float(np.percentile(vals, 90)), 2)
         ))
 
-    return results
+    # Calculate metrics for portfolio
+    port_return = float(np.dot(weights, returns))
+    cov_matrix = np.outer(vols, vols) * corr_matrix
+    port_volatility = float(
+        np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights))))
+
+    return MultiAssetResponse(
+        results=yearly_results,
+        expected_portfolio_return=round(port_return, 4),
+        expected_portfolio_volatility=round(port_volatility, 4)
+    )
