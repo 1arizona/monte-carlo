@@ -16,7 +16,7 @@ export const Simulator: React.FC = () => {
 
   return (
     <div style={{ padding: '24px', maxWidth: '1000px', margin: '0 auto', fontFamily: 'sans-serif' }}>
-      <h2>Monte Carlo Portfolio Simulator</h2>
+      <h2 style={{ color: '#0f172a', marginBottom: '16px', fontSize: '24px', fontWeight: 'bold' }}>Monte Carlo Portfolio Simulator</h2>
       
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', background: '#f5f5f5', padding: '16px', borderRadius: '8px', marginBottom: '24px' }}>
         <div>
@@ -65,7 +65,7 @@ export const Simulator: React.FC = () => {
             <CartesianGrid strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="year" unit=" yrs" />
             <YAxis tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-            <Tooltip formatter={(val: number) => [`$${val.toLocaleString()}`]} />
+            <Tooltip formatter={(value: number | string | undefined) => [`$${Number(value ?? 0).toLocaleString()}`]} />
             <Legend />
             <Line type="monotone" dataKey="p90" name="Optimistic (p90)" stroke="#10B981" strokeWidth={2} dot={false} />
             <Line type="monotone" dataKey="p50" name="Median (p50)" stroke="#3B82F6" strokeWidth={2} dot={false} />
