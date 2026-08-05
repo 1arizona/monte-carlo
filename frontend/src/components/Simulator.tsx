@@ -65,7 +65,7 @@ export const Simulator: React.FC = () => {
             <CartesianGrid strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="year" unit=" yrs" />
             <YAxis tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-            <Tooltip formatter={(val: number) => [`$${val.toLocaleString()}`]} />
+            <Tooltip formatter={(val: any) => [`$${val.toLocaleString()}`]} />
             <Legend />
             <Line type="monotone" dataKey="p90" name="Optimistic (p90)" stroke="#10B981" strokeWidth={2} dot={false} />
             <Line type="monotone" dataKey="p50" name="Median (p50)" stroke="#3B82F6" strokeWidth={2} dot={false} />
