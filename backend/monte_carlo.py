@@ -81,7 +81,7 @@ def run_multi_asset_monte_carlo(req: MultiAssetRequest) -> MultiAssetResponse:
     # Aggregate portfolio value across assets
     portfolio_paths = np.sum(asset_paths, axis=1)
 
-    yearly_results = List[YearResult] = []
+    yearly_results: List[YearResult] = []
     for year in range(req.years + 1):
         step_idx = year * steps_per_year
         vals = portfolio_paths[step_idx]
